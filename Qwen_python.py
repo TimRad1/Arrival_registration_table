@@ -11,6 +11,7 @@ STATUSES = ["Присутствует", "Болен", "Командировка"
 ARRIVAL_TIMES = ["1 час", "1.5 часа", "2 часа", "2.5 часа", "3 часа"]
 
 FONT_SIZE = 20
+COMBO_FONT_SIZE = FONT_SIZE * 2
 
 def parse_hours(text):
     return float(text.replace("час", "").replace("а", "").strip())
@@ -34,6 +35,7 @@ class App(tk.Tk):
         self.update_counters()
 
         self.bind("<Control-f>", self.search_dialog)
+        self.bind("<Escape>", self.clear_selection)
         #self.bind_all("<Button-1>", self.global_click, add="+")  # Удалено
         self.tree.bind("<MouseWheel>", self.fast_scroll)
         
@@ -55,7 +57,9 @@ class App(tk.Tk):
         style.configure(".", background=bg, foreground=fg, font=("Segoe UI", FONT_SIZE))
         style.configure("Treeview", font=("Segoe UI", FONT_SIZE), rowheight=40,
                         background="#2a2a2a", fieldbackground="#2a2a2a", foreground="white")
-        style.configure("Treeview.Heading", font=("Segoe UI", FONT_SIZE, "bold"))
+        style.configure("Treeview.Heading", font=("Segoe UI", FONT_SIZE, "bold"),
+                        background="#2255aa", foreground="white")
+        style.map("Treeview.Heading", background=[("active", "#3366cc")])
 
         style.configure("TButton", padding=10)
         style.configure("Green.TButton", background="#1e8f3a", foreground="white")
@@ -65,6 +69,9 @@ class App(tk.Tk):
 
         style.configure("TEntry", fieldbackground=field, foreground="black")
         style.configure("TCombobox", fieldbackground=field, foreground="black")
+        style.configure("Big.TCombobox", fieldbackground=field, foreground="black",
+                        font=("Segoe UI", COMBO_FONT_SIZE, "bold"))
+        self.option_add("*TCombobox*Listbox.font", ("Segoe UI", COMBO_FONT_SIZE, "bold"))
 
     def create_widgets(self):
         top = ttk.Frame(self)
@@ -74,12 +81,17 @@ class App(tk.Tk):
                                     style="Green.TButton", width=14)
         self.start_btn.pack(side="left", padx=5)
 
-        self.start_lbl = ttk.Label(top, text="Время запуска: ---")
-        self.start_lbl.pack(side="left", padx=20)
-
         self.clear_btn = ttk.Button(top, text="ОЧИСТИТЬ ДАННЫЕ", command=self.clear_data,
                                     style="Red.TButton", width=18)
-        self.clear_btn.pack(side="right", padx=10)
+        self.clear_btn.pack(side="left", padx=10)
+
+        self.start_lbl = ttk.Label(top, text="Время запуска: ---",
+                                   font=("Segoe UI", FONT_SIZE * 2), foreground="red")
+        self.start_lbl.pack(side="left", padx=20)
+
+        self.search_btn = ttk.Button(top, text="ПОИСК", command=self.search_dialog,
+                                     style="Blue.TButton", width=12)
+        self.search_btn.pack(side="right", padx=10)
 
         main = ttk.Frame(self)
         main.pack(fill="both", expand=True, padx=10, pady=5)
@@ -120,7 +132,7 @@ class App(tk.Tk):
             ttk.Label(right, text=txt).pack(anchor="w", pady=(6,0))
 
         label("Должность")
-        self.pos_cb = ttk.Combobox(right, values=POSITIONS, state="readonly")
+        self.pos_cb = ttk.Combobox(right, values=POSITIONS, state="readonly", style="Big.TCombobox")
         self.pos_cb.current(0)
         self.pos_cb.pack(fill="x")
 
@@ -129,11 +141,13 @@ class App(tk.Tk):
         self.fio_ent.pack(fill="x")
 
         label("Время прибытия")
-        self.arr_cb = ttk.Combobox(right, values=ARRIVAL_TIMES, state="readonly")
+        self.arr_cb = ttk.Combobox(right, values=ARRIVAL_TIMES, state="readonly", style="Big.TCombobox")
+        self.arr_cb.current(0)
         self.arr_cb.pack(fill="x")
 
         label("Статус")
-        self.status_cb = ttk.Combobox(right, values=STATUSES, state="readonly")
+        self.status_cb = ttk.Combobox(right, values=STATUSES, state="readonly", style="Big.TCombobox")
+        self.status_cb.current(0)
         self.status_cb.pack(fill="x")
         self.status_cb.bind("<<ComboboxSelected>>", self.update_row_from_right)
 
@@ -180,6 +194,20 @@ class App(tk.Tk):
     # ====== Методы ======
     def fast_scroll(self, event):
         self.tree.yview_scroll(int(-3*(event.delta/120)), "units")
+
+    def format_timedelta(self, td):
+        total_minutes = int(td.total_seconds() // 60)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours:02d}:{minutes:02d}"
+
+    def clear_selection(self, event=None):
+        self.tree.selection_remove(self.tree.selection())
+        self.current_item = None
+        self.pos_cb.set(POSITIONS[0])
+        self.fio_ent.delete(0, tk.END)
+        self.arr_cb.set(ARRIVAL_TIMES[0])
+        self.status_cb.set(STATUSES[0])
 
     def show_context_menu(self, event):
         item = self.tree.identify_row(event.y)
@@ -247,7 +275,7 @@ class App(tk.Tk):
 
     def start_timer(self):
         self.start_time = datetime.now()
-        self.start_lbl.config(text=f"Время запуска: {self.start_time.strftime('%H:%M:%S')}")
+        self.start_lbl.config(text=f"Время запуска: {self.start_time.strftime('%H:%M')}")
         self.save_data()
 
     def add_row(self):
@@ -337,12 +365,12 @@ class App(tk.Tk):
         if self.rows[item]["status"] != "Присутствует": return
         now = datetime.now()
         self.rows[item]["fact"] = now
-        self.tree.set(item,"fact",now.strftime("%H:%M:%S"))
+        self.tree.set(item,"fact",now.strftime("%H:%M"))
         expected = self.start_time + timedelta(hours=self.rows[item]["arrival"])
         late = now - expected
         if late.total_seconds()<0:
             late = timedelta(0)
-        self.tree.set(item,"late",str(late))
+        self.tree.set(item,"late",self.format_timedelta(late))
         self.apply_color(item)
         self.update_counters()
         self.save_data()
@@ -369,7 +397,7 @@ class App(tk.Tk):
         late_text = self.tree.set(item,"late")
         if status != "Присутствует":
             self.tree.item(item, tags=("other",))
-        elif late_text and late_text != "0:00:00":
+        elif late_text and late_text != "00:00":
             self.tree.item(item, tags=("late",))
         elif self.rows[item]["fact"]:
             self.tree.item(item, tags=("ontime",))
@@ -396,7 +424,7 @@ class App(tk.Tk):
         self.sick_lbl.config(text=f"Болен: {sick}")
         self.trip_lbl.config(text=f"Командировка: {trip}")
         self.arrived_lbl.config(text=f"Пришли: {arrived}")
-        self.percent_lbl.config(text=f"Процент: {percent:.1f}%")
+        self.percent_lbl.config(text=f"Процент прибытия: {percent:.1f}%")
 
     def on_select(self, event):
         sel = self.tree.selection()
@@ -439,13 +467,16 @@ class App(tk.Tk):
                 if r["fact"] and self.start_time <= r["fact"] <= end:
                     present_arrived += 1
         percent = (present_arrived/present_total*100) if present_total else 0
+        header_text = f"Выгрузка за {hours} ч"
+        data = [[header_text, "", "", "", "", ""]] + data
         df=pd.DataFrame(data,columns=["Должность","ФИО","Время прибытия","Факт","Опоздание","Статус"])
         df.loc[len(df)] = ["","","","","",""]
         df.loc[len(df)] = ["Процент прибытия","","","","",f"{percent:.1f}%"]
 
         fname=f"export_{hours}h.xlsx"
         df.to_excel(fname,index=False)
-        messagebox.showinfo("Готово",f"Сохранено: {fname}")
+        full_path = os.path.abspath(fname)
+        messagebox.showinfo("Готово",f"Сохранено: {full_path}")
 
     def save_data(self):
         data={"start": self.start_time.isoformat() if self.start_time else None,
@@ -466,7 +497,7 @@ class App(tk.Tk):
             data=json.load(f)
         if data["start"]:
             self.start_time=datetime.fromisoformat(data["start"])
-            self.start_lbl.config(text=f"Время запуска: {self.start_time.strftime('%H:%M:%S')}")
+            self.start_lbl.config(text=f"Время запуска: {self.start_time.strftime('%H:%M')}")
         for row in data["rows"]:
             i=self.tree.insert("", "end", values=row["values"])
             self.rows[i]={ 
